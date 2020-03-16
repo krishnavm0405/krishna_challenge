@@ -26,7 +26,7 @@ the web server.
 3. Download & Install required dependencies
 4. Once dependencies are installed, simply start up Vagrant and it will handle the rest
 5. While in krishna_Challenge directory... run: aws cli
-6. Navigate to https://3.17.188.227/in your browser of choice
+6. Navigate to https://3.17.188.227/ in your browser of choice
 # Note:
 * Will redirect to https, but is currently using a self-signed certificate
 * public_ip in ansible need to be initialized
