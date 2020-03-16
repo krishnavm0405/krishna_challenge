@@ -1,0 +1,79 @@
+---
+- hosts: localhost
+  vars:
+    public_ip: 3.17.188.227
+    validate_self_cert: no
+
+  tasks:
+    - name: install httpd
+      yum: name=httpd state=latest
+
+    - name: install mod_ssl
+      yum: name=mod_ssl state=latest
+
+    - name: httpd listen on port 8081
+      lineinfile: dest=/etc/httpd/conf/httpd.conf regexp="^Listen 80" line="Listen 8081" state=present
+
+    - name: copy index.html
+      copy:
+        src: /root/roles/tasks/files/index.html
+        dest: /var/www/html/index.html
+      
+     # NOTE - Self-cert creation command modfied from original source: https://serialized.net/2013/04/simply-generating-self-signed-ssl-certs-with-ansible/
+    - name: Generate a Self Signed OpenSSL certificate & key
+      command: openssl req -new -nodes -x509 -subj "/C=US/ST=Pennsylvania/L=Philadelphia/O=IT/CN={{ public_ip }}" -days 3650 -keyout /etc/pki/tls/private/ca.key -out /etc/pki/tls/certs/ca.crt -extensions v3_ca creates=/etc/pki/tls/certs/ca.crt
+
+    - name: SSLCertificateFile location
+      lineinfile: dest=/etc/httpd/conf/httpd.conf regexp="^SSLCertificateFile /etc/pki/tls/certs/localhost.crt" line="SSLCertificateFile /etc/pki/tls/certs/ca.crt" state=present
+     
+    - name: SSLCertificateKeyFile location
+      lineinfile: dest=/etc/httpd/conf/httpd.conf regexp="^SSLCertificateKeyFile /etc/pki/tls/private/localhost.key" line="SSLCertificateKeyFile /etc/pki/tls/private/ca.key" state=present
+      
+    - name: copy httpd.conf
+      copy:
+        src: /root/roles/tasks/files/httpd.conf
+        dest: /etc/httpd/conf/httpd.conf
+      notify:
+        - restart httpd
+
+    - name: Check Server Status
+      command: service httpd status
+      register: httpd_status
+      notify:
+        - TEST ~ Ensure HTTP redirects to HTTPS
+        - TEST ~ Ensure Port 443 is open
+        - TEST ~ Check loading site via HTTPS
+
+    # Report httpd Status in Console
+    - debug:
+        var: httpd_status
+
+  handlers:
+    - name: restart httpd
+      service: name=httpd state=restarted
+
+    # TEST FOR: httpd on http
+    - name: TEST ~ Ensure HTTP redirects to HTTPS
+      uri:
+        url: http://{{ public_ip }}
+        method: GET
+        status_code: 200
+        validate_certs: "{{ validate_self_cert }}" # Added due to Cert being self-signed
+      register: https-redirect
+
+    # TEST FOR: httpd for port 443
+    - name: TEST ~ Ensure Port 443 is open
+      wait_for: 
+        host: "{{ public_ip }}"
+        port: 443
+        state: started
+        timeout: 5
+
+    # TEST FOR: httpd on https
+    - name: TEST ~ Check loading site via HTTPS
+      uri:
+        url: https://{{ public_ip }}
+        method: GET
+        status_code: 200
+        validate_certs: "{{ validate_self_cert }}" # Added due to Cert being self-signed
+      register: https-redirect
